@@ -382,9 +382,14 @@ let rightMargin = 100;
 let topMargin = 150;
 let rowSpacing = 80;
 let sameYearSpacing = 18;
+let minimumCanvasWidth = 1100;
 
 let timelineY;
 let photoXPositions = {};
+let timelineShell;
+let yearRuler;
+let canvasContainer;
+let personLabelsLayer;
 
 
 function calculatePhotoXPositions() {
@@ -424,6 +429,94 @@ function calculatePhotoXPositions() {
 
 function getPhotoX(photo) {
   return photoXPositions[photo.id];
+}
+
+
+function getResponsiveCanvasWidth() {
+  return max(windowWidth, minimumCanvasWidth);
+}
+
+
+function createTimelineStructure() {
+  timelineShell = document.createElement("main");
+  timelineShell.id = "timeline-shell";
+
+  yearRuler = document.createElement("div");
+  yearRuler.id = "year-ruler";
+  yearRuler.setAttribute("aria-label", "Timeline years 1900 to 2023");
+
+  canvasContainer = document.createElement("div");
+  canvasContainer.id = "canvas-container";
+
+  personLabelsLayer = document.createElement("div");
+  personLabelsLayer.id = "person-labels";
+  personLabelsLayer.setAttribute("aria-label", "People in the archive");
+
+  timelineShell.append(yearRuler, canvasContainer, personLabelsLayer);
+  document.body.appendChild(timelineShell);
+}
+
+
+function renderPersonLabels() {
+  personLabelsLayer.replaceChildren();
+
+  people.forEach((person, index) => {
+    let row = document.createElement("div");
+    row.className = "person-label-row";
+    row.style.top = `${topMargin + index * rowSpacing - rowSpacing / 2}px`;
+    row.style.height = `${rowSpacing}px`;
+
+    let label = document.createElement("span");
+    label.className = "person-label";
+    label.textContent = person;
+
+    row.appendChild(label);
+    personLabelsLayer.appendChild(row);
+  });
+}
+
+
+function renderYearRuler() {
+  yearRuler.replaceChildren();
+
+  let track = document.createElement("div");
+  track.className = "year-ruler-track";
+  track.style.left = `${leftMargin}px`;
+  track.style.right = `${rightMargin}px`;
+  yearRuler.appendChild(track);
+
+  let years = [];
+
+  for (let year = minYear; year <= maxYear; year += 10) {
+    if (maxYear - year >= 5) {
+      years.push(year);
+    }
+  }
+
+  years.push(maxYear);
+
+  for (let year of years) {
+    let tick = document.createElement("span");
+    tick.className = "year-ruler-tick";
+    tick.textContent = year;
+    tick.style.left = `${map(
+      year,
+      minYear,
+      maxYear,
+      leftMargin,
+      width - rightMargin
+    )}px`;
+    yearRuler.appendChild(tick);
+  }
+}
+
+
+function updateTimelineStructure() {
+  timelineShell.style.width = `${width}px`;
+  timelineShell.style.setProperty("--person-label-width", `${leftMargin}px`);
+  personLabelsLayer.style.width = `${width}px`;
+  personLabelsLayer.style.height = `${height}px`;
+  renderYearRuler();
 }
 
 
@@ -483,9 +576,14 @@ function setup() {
     180;
 
 
-  createCanvas(1400, canvasHeight);
+  createTimelineStructure();
+
+  let canvas = createCanvas(getResponsiveCanvasWidth(), canvasHeight);
+  canvas.parent(canvasContainer);
 
   calculatePhotoXPositions();
+  renderPersonLabels();
+  updateTimelineStructure();
 
   textFont("Arial");
 
@@ -493,6 +591,17 @@ function setup() {
     topMargin +
     people.length * rowSpacing +
     30;
+}
+
+
+function windowResized() {
+  if (!timelineShell) {
+    return;
+  }
+
+  resizeCanvas(getResponsiveCanvasWidth(), height);
+  calculatePhotoXPositions();
+  updateTimelineStructure();
 }
 
 
@@ -572,23 +681,6 @@ function drawGuideLines() {
     let y =
       topMargin +
       i * rowSpacing;
-
-
-    // Person name
-
-    noStroke();
-
-    fill(40);
-
-    textAlign(RIGHT);
-
-    textSize(15);
-
-    text(
-      people[i],
-      leftMargin - 25,
-      y + 5
-    );
 
 
     // Horizontal guide line
@@ -687,13 +779,17 @@ function drawTimeline() {
   );
 
 
-  // Decades 1900–2020
+  // Decades, omitting the last one when it would collide with the endpoint.
 
   for (
-    let year = 1900;
-    year <= 2020;
+    let year = minYear;
+    year <= maxYear;
     year += 10
   ) {
+
+    if (maxYear - year < 5) {
+      continue;
+    }
 
     let x =
       map(
@@ -734,11 +830,11 @@ function drawTimeline() {
   }
 
 
-  // Final endpoint: 2023
+  // Final endpoint
 
-  let x2023 =
+  let endpointX =
     map(
-      2023,
+      maxYear,
       minYear,
       maxYear,
       leftMargin,
@@ -749,9 +845,9 @@ function drawTimeline() {
   stroke(50);
 
   line(
-    x2023,
+    endpointX,
     timelineY - 8,
-    x2023,
+    endpointX,
     timelineY + 8
   );
 
@@ -765,8 +861,8 @@ function drawTimeline() {
   textSize(11);
 
   text(
-    "2023",
-    x2023,
+    maxYear,
+    endpointX,
     timelineY + 24
   );
 

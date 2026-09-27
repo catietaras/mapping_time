@@ -1,6 +1,13 @@
+html,
 body {
   margin: 0;
   padding: 0;
+
+  min-height: 100%;
+}
+
+body {
+  overflow-x: auto;
 
   background: #f7f7f5;
 
@@ -9,5 +16,87 @@ body {
 
 canvas {
   display: block;
-  margin: 0 auto;
+  margin: 0;
+}
+
+#timeline-shell {
+  position: relative;
+}
+
+#year-ruler {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+
+  height: 44px;
+
+  background: rgba(247, 247, 245, 0.96);
+  border-bottom: 1px solid #d8d8d4;
+}
+
+.year-ruler-track {
+  position: absolute;
+  bottom: 10px;
+
+  border-bottom: 1px solid #9a9a96;
+}
+
+.year-ruler-tick {
+  position: absolute;
+  bottom: 13px;
+
+  color: #4a4a48;
+  font-size: 11px;
+  line-height: 1;
+  transform: translateX(-50%);
+}
+
+.year-ruler-tick::after {
+  position: absolute;
+  top: 15px;
+  left: 50%;
+
+  width: 1px;
+  height: 6px;
+
+  background: #6f6f6b;
+  content: "";
+}
+
+#person-labels {
+  position: absolute;
+  top: 44px;
+  left: 0;
+  z-index: 2;
+
+  pointer-events: none;
+}
+
+.person-label-row {
+  position: absolute;
+  right: 0;
+  left: 0;
+
+  display: flex;
+  align-items: center;
+}
+
+.person-label {
+  position: sticky;
+  left: 0;
+
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+
+  box-sizing: border-box;
+  width: var(--person-label-width);
+  flex: 0 0 var(--person-label-width);
+  padding-right: 25px;
+
+  background: #f7f7f5;
+  color: #282828;
+  font-size: 15px;
+  text-align: right;
 }
