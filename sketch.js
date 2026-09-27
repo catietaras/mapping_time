@@ -104,7 +104,7 @@ let photoData = [
   {
     id: 11,
     year: 1944,
-    people: ["Kathleen Smith Scipione", "Richard Smith", "Dorothy Smtih Nevins"]
+    people: ["Kathleen Smith Scipione", "Richard Smith", "Dorothy Smith Nevins"]
   },
 
   {
@@ -122,7 +122,7 @@ let photoData = [
   {
     id: 14,
     year: 1950,
-    people: ["Marnie Cassidy", "Richard Smtih", "Eleanor Cassidy Redmond"]
+    people: ["Marnie Cassidy", "Richard Smith", "Eleanor Cassidy Redmond"]
   },
 
   {
@@ -140,7 +140,7 @@ let photoData = [
    {
     id: 17,
     year: 1957,
-    people: ["Richard Smith", "Liz Smith", "Richard Smith"]
+    people: ["Richard Smith", "Liz Smith"]
   },
 
   {
@@ -182,7 +182,7 @@ let photoData = [
    {
     id: 24,
     year: 1968,
-    people: ["Richard Smith", "Barbara Golden Smith", "Margaret Smtih", "Liz Smith"]
+    people: ["Richard Smith", "Barbara Golden Smith", "Margaret Smith", "Liz Smith"]
   },
 
   {
@@ -218,13 +218,13 @@ let photoData = [
   {
     id: 30,
     year: 1976,
-    people: ["", "Barbara Golden Smith", "Kathleen Smith Scipione", "Richard Smith", "Liz Smith", "Vin Cassidy", "Alice Cassidy", "Margaret Smith"]
+    people: ["Barbara Golden Smith", "Kathleen Smith Scipione", "Richard Smith", "Liz Smith", "Vin Cassidy", "Alice Cassidy", "Margaret Smith"]
   },
 
   {
     id: 31,
     year: 1980,
-    people: ["Dorothy Cassidy McGuire", "Margaret Smtih"]
+    people: ["Dorothy Cassidy McGuire", "Margaret Smith"]
   },
 
   {
@@ -242,7 +242,7 @@ let photoData = [
   {
     id: 34,
     year: 1985,
-    people: ["Richard Smith", "Fran Darrow Golden", "Barbara Golden Smith", "Margaret Smith", "Jim Ryan", "Elizabeth Smith", "Bob Barry"]
+    people: ["Richard Smith", "Fran Darrow Golden", "Barbara Golden Smith", "Margaret Smith", "Jim Ryan", "Liz Smith", "Bob Barry"]
   },
 
   {
@@ -279,14 +279,14 @@ let photoData = [
   {
     id: 40,
     year: 2003,
-    people: ["Margaret Smtih", "Richard Smith", "James Ryan", "Robert Barry", "Catie Ryan Taras", "Jenny Barry"]
+    people: ["Margaret Smith", "Richard Smith", "James Ryan", "Robert Barry", "Catie Ryan Taras", "Jenny Barry"]
   },
 
 
    {
     id: 41,
     year: 2006,
-    people: ["Robert Barry", "Elizabeth Smith", "Richard Smith"]
+    people: ["Robert Barry", "Liz Smith", "Richard Smith"]
   },
 
   {
@@ -363,14 +363,68 @@ let people = [];
 let images = {};
 
 
+// Keep person lists clean even when future photo data contains
+// extra whitespace, blank entries, or the same name more than once.
+
+function normalizePeople(names) {
+  return [...new Set(
+    names
+      .map(name => name.trim())
+      .filter(Boolean)
+  )];
+}
+
+
 // Graph measurements
 
 let leftMargin = 220;
 let rightMargin = 100;
 let topMargin = 150;
 let rowSpacing = 80;
+let sameYearSpacing = 18;
 
 let timelineY;
+let photoXPositions = {};
+
+
+function calculatePhotoXPositions() {
+  let graphRight = width - rightMargin;
+  let photosByYear = new Map();
+
+  for (let photo of photoData) {
+    if (!photosByYear.has(photo.year)) {
+      photosByYear.set(photo.year, []);
+    }
+
+    photosByYear.get(photo.year).push(photo);
+  }
+
+  for (let [year, photos] of photosByYear) {
+    let yearX = map(
+      year,
+      minYear,
+      maxYear,
+      leftMargin,
+      graphRight
+    );
+
+    let groupWidth = (photos.length - 1) * sameYearSpacing;
+    let startX = constrain(
+      yearX - groupWidth / 2,
+      leftMargin,
+      graphRight - groupWidth
+    );
+
+    photos.forEach((photo, index) => {
+      photoXPositions[photo.id] = startX + index * sameYearSpacing;
+    });
+  }
+}
+
+
+function getPhotoX(photo) {
+  return photoXPositions[photo.id];
+}
 
 
 // -------------------------------------
@@ -395,6 +449,11 @@ function preload() {
 // -------------------------------------
 
 function setup() {
+
+  photoData = photoData.map(photo => ({
+    ...photo,
+    people: normalizePeople(photo.people)
+  }));
 
   // Automatically find every unique person
   // mentioned in the photo data.
@@ -425,6 +484,8 @@ function setup() {
 
 
   createCanvas(1400, canvasHeight);
+
+  calculatePhotoXPositions();
 
   textFont("Arial");
 
@@ -554,17 +615,9 @@ function drawGuideLines() {
 
 function drawPhotoPoints() {
 
-  let graphRight = width - rightMargin;
-
   for (let photo of photoData) {
 
-    let x = map(
-      photo.year,
-      minYear,
-      maxYear,
-      leftMargin,
-      graphRight
-    );
+    let x = getPhotoX(photo);
 
     for (let person of photo.people) {
 
@@ -738,18 +791,13 @@ function drawTimeline() {
 // -------------------------------------
 
 function drawHoverImage() {
-
-  let graphRight = width - rightMargin;
+  let hoveredPhoto = null;
+  let hoveredX = 0;
+  let hoveredY = 0;
+  let closestDistanceSquared = Infinity;
 
   for (let photo of photoData) {
-
-    let x = map(
-      photo.year,
-      minYear,
-      maxYear,
-      leftMargin,
-      graphRight
-    );
+    let x = getPhotoX(photo);
 
     for (let person of photo.people) {
 
@@ -764,10 +812,22 @@ function drawHoverImage() {
         mouseY < y + 15;
 
       if (overThumbnail) {
-        showPhotoPopup(photo, x, y);
-        return;
+        let distanceSquared =
+          (mouseX - x) ** 2 +
+          (mouseY - y) ** 2;
+
+        if (distanceSquared < closestDistanceSquared) {
+          hoveredPhoto = photo;
+          hoveredX = x;
+          hoveredY = y;
+          closestDistanceSquared = distanceSquared;
+        }
       }
     }
+  }
+
+  if (hoveredPhoto) {
+    showPhotoPopup(hoveredPhoto, hoveredX, hoveredY);
   }
 }
 
@@ -861,8 +921,6 @@ function showPhotoPopup(photo, x, y) {
 
 function drawSharedConnections() {
 
-  let graphRight = width - rightMargin;
-
   for (let photo of photoData) {
 
     // Only connect photographs containing multiple people
@@ -870,13 +928,7 @@ function drawSharedConnections() {
       continue;
     }
 
-    let x = map(
-      photo.year,
-      minYear,
-      maxYear,
-      leftMargin,
-      graphRight
-    );
+    let x = getPhotoX(photo);
 
     let yPositions = [];
 
