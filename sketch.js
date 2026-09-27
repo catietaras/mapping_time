@@ -379,13 +379,13 @@ function normalizePeople(names) {
 
 let leftMargin = 220;
 let rightMargin = 100;
-let topMargin = 190;
-let rowSpacing = 80;
-let sameYearSpacing = 18;
+let topMargin = 250;
+let rowSpacing = 48;
+let sameYearSpacing = 22;
 let minimumCanvasWidth = 1100;
-let photoBandY = 125;
-let photoThumbnailSize = 26;
-let personNodeSize = 7;
+let photoBandY = 185;
+let photoThumbnailSize = 32;
+let personNodeSize = 8;
 
 let timelineY;
 let photoXPositions = {};
@@ -393,6 +393,11 @@ let timelineShell;
 let yearRuler;
 let canvasContainer;
 let personLabelsLayer;
+let photoDetailPanel;
+let filterStatus;
+let selectedPhoto = null;
+let selectedPerson = null;
+let hoveredPhoto = null;
 
 
 function calculatePhotoXPositions() {
@@ -457,6 +462,86 @@ function createTimelineStructure() {
 
   timelineShell.append(yearRuler, canvasContainer, personLabelsLayer);
   document.body.appendChild(timelineShell);
+
+  filterStatus = document.createElement("div");
+  filterStatus.id = "filter-status";
+  filterStatus.hidden = true;
+  timelineShell.appendChild(filterStatus);
+
+  photoDetailPanel = document.createElement("aside");
+  photoDetailPanel.id = "photo-detail";
+  photoDetailPanel.hidden = true;
+  photoDetailPanel.setAttribute("aria-live", "polite");
+  document.body.appendChild(photoDetailPanel);
+}
+
+
+function setPersonFilter(person) {
+  selectedPerson = selectedPerson === person ? null : person;
+  selectedPhoto = null;
+  updatePhotoDetail();
+  updateFilterStatus();
+  renderPersonLabels();
+}
+
+
+function updateFilterStatus() {
+  filterStatus.replaceChildren();
+  filterStatus.hidden = !selectedPerson;
+
+  if (!selectedPerson) {
+    return;
+  }
+
+  let text = document.createElement("span");
+  let count = photoData.filter(photo => photo.people.includes(selectedPerson)).length;
+  text.textContent = `${selectedPerson} · ${count} photograph${count === 1 ? "" : "s"}`;
+
+  let clearButton = document.createElement("button");
+  clearButton.type = "button";
+  clearButton.textContent = "Clear";
+  clearButton.addEventListener("click", () => setPersonFilter(selectedPerson));
+
+  filterStatus.append(text, clearButton);
+}
+
+
+function updatePhotoDetail() {
+  photoDetailPanel.replaceChildren();
+  photoDetailPanel.hidden = !selectedPhoto;
+
+  if (!selectedPhoto) {
+    return;
+  }
+
+  let closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "photo-detail-close";
+  closeButton.setAttribute("aria-label", "Close photograph details");
+  closeButton.textContent = "×";
+  closeButton.addEventListener("click", () => {
+    selectedPhoto = null;
+    updatePhotoDetail();
+  });
+
+  let img = document.createElement("img");
+  img.className = "photo-detail-image";
+  img.src = `images/${selectedPhoto.id}.jpg`;
+  img.alt = `Archive photograph ${selectedPhoto.id} from ${selectedPhoto.year}`;
+
+  let kicker = document.createElement("p");
+  kicker.className = "photo-detail-kicker";
+  kicker.textContent = `Photograph ${selectedPhoto.id}`;
+
+  let year = document.createElement("h2");
+  year.className = "photo-detail-year";
+  year.textContent = selectedPhoto.year;
+
+  let peopleList = document.createElement("p");
+  peopleList.className = "photo-detail-people";
+  peopleList.textContent = selectedPhoto.people.join(" · ");
+
+  photoDetailPanel.append(closeButton, img, kicker, year, peopleList);
 }
 
 
@@ -481,9 +566,14 @@ function renderPersonLabels() {
     row.style.top = `${topMargin + index * rowSpacing - rowSpacing / 2}px`;
     row.style.height = `${rowSpacing}px`;
 
-    let label = document.createElement("span");
+    let label = document.createElement("button");
+    label.type = "button";
     label.className = "person-label";
     label.textContent = person;
+    label.setAttribute("aria-pressed", selectedPerson === person ? "true" : "false");
+    label.setAttribute("aria-label", `Show photographs featuring ${person}`);
+    label.classList.toggle("is-selected", selectedPerson === person);
+    label.addEventListener("click", () => setPersonFilter(person));
 
     row.appendChild(label);
     personLabelsLayer.appendChild(row);
@@ -588,7 +678,7 @@ function setup() {
   let canvasHeight =
     topMargin +
     people.length * rowSpacing +
-    180;
+    140;
 
 
   createTimelineStructure();
@@ -626,11 +716,13 @@ function windowResized() {
 
 function draw() {
 
-  background(247, 247, 245);
+  background(243, 239, 230);
 
   drawTitle();
 
   drawTimeGrid();
+
+  drawActivityBands();
 
   drawGuideLines();
 
@@ -655,29 +747,90 @@ function drawTitle() {
 
   noStroke();
 
-  fill(30);
+  fill(159, 77, 47);
 
   textAlign(LEFT);
 
-  textSize(30);
+  textFont("Arial");
+
+  textStyle(BOLD);
+
+  textSize(11);
+
+  text(
+    "A FAMILY PHOTOGRAPH ARCHIVE · 1900–2023",
+    70,
+    42
+  );
+
+  fill(36, 33, 28);
+
+  textAlign(LEFT);
+
+  textFont("Georgia");
+
+  textStyle(NORMAL);
+
+  textSize(38);
 
   text(
     "Relational Archive",
     70,
-    55
-  );
-
-
-  fill(100);
-
-  textSize(15);
-
-  text(
-    "Photographs organized by people and time",
-    70,
     82
   );
 
+
+  fill(117, 111, 101);
+
+  textFont("Arial");
+
+  textSize(14);
+
+  text(
+    "Follow a name across time, or open a photograph to see who shares the moment.",
+    70,
+    110
+  );
+
+  textSize(12);
+
+  text(
+    "HOVER TO PREVIEW  ·  CLICK TO KEEP OPEN  ·  SELECT A NAME TO TRACE",
+    70,
+    137
+  );
+
+}
+
+
+function isPhotoRelevant(photo) {
+  return !selectedPerson || photo.people.includes(selectedPerson);
+}
+
+
+function drawActivityBands() {
+  let graphRight = width - rightMargin;
+
+  for (let i = 0; i < people.length; i++) {
+    let person = people[i];
+    let personPhotos = photoData.filter(photo => photo.people.includes(person));
+    let years = personPhotos.map(photo => photo.year);
+    let startX = map(min(years), minYear, maxYear, leftMargin, graphRight);
+    let endX = map(max(years), minYear, maxYear, leftMargin, graphRight);
+    let y = topMargin + i * rowSpacing;
+    let active = !selectedPerson || selectedPerson === person;
+
+    stroke(active ? 167 : 206, active ? 157 : 198, active ? 141 : 185, active ? 150 : 80);
+    strokeWeight(selectedPerson === person ? 6 : 3);
+    line(startX, y, max(startX + 5, endX), y);
+
+    if (selectedPerson === person) {
+      noStroke();
+      fill(159, 77, 47);
+      circle(startX, y, 7);
+      circle(max(startX + 5, endX), y, 7);
+    }
+  }
 }
 
 
@@ -700,7 +853,7 @@ function drawGuideLines() {
 
     // Horizontal guide line
 
-    stroke(220);
+    stroke(216, 208, 194, selectedPerson && selectedPerson !== people[i] ? 75 : 150);
 
     strokeWeight(1);
 
@@ -731,18 +884,22 @@ function drawPhotoPoints() {
       img,
       x,
       photoBandY,
-      photoThumbnailSize
+      photoThumbnailSize,
+      isPhotoRelevant(photo) ? 255 : 45,
+      selectedPhoto && selectedPhoto.id === photo.id
     );
   }
 }
 
-function drawThumbnail(img, x, y, size) {
+function drawThumbnail(img, x, y, size, alpha = 255, isSelected = false) {
   let side = min(img.width, img.height);
 
   let sx = (img.width - side) / 2;
   let sy = (img.height - side) / 2;
 
   imageMode(CENTER);
+
+  tint(255, alpha);
 
   image(
     img,
@@ -756,13 +913,15 @@ function drawThumbnail(img, x, y, size) {
     side
   );
 
+  noTint();
+
   imageMode(CORNER);
 
   noFill();
-  stroke(255);
-  strokeWeight(1);
+  stroke(isSelected ? color(159, 77, 47) : color(255, 253, 248, alpha));
+  strokeWeight(isSelected ? 3 : 1);
   rectMode(CENTER);
-  rect(x, y, size, size);
+  rect(x, y, size + (isSelected ? 4 : 0), size + (isSelected ? 4 : 0));
   rectMode(CORNER);
 }
 
@@ -899,7 +1058,7 @@ function drawTimeline() {
 // -------------------------------------
 
 function drawHoverImage() {
-  let hoveredPhoto = null;
+  hoveredPhoto = null;
   let hoveredX = 0;
   let hoveredY = 0;
   let closestDistanceSquared = Infinity;
@@ -928,6 +1087,10 @@ function drawHoverImage() {
   }
 
   for (let photo of photoData) {
+    if (!isPhotoRelevant(photo)) {
+      continue;
+    }
+
     let x = getPhotoX(photo);
 
     considerHit(
@@ -948,8 +1111,23 @@ function drawHoverImage() {
   }
 
   if (hoveredPhoto) {
-    showPhotoPopup(hoveredPhoto, hoveredX, hoveredY);
+    cursor(HAND);
+    if (!selectedPhoto || selectedPhoto.id !== hoveredPhoto.id) {
+      showPhotoPopup(hoveredPhoto, hoveredX, hoveredY);
+    }
+  } else {
+    cursor(ARROW);
   }
+}
+
+
+function mousePressed() {
+  if (!hoveredPhoto) {
+    return;
+  }
+
+  selectedPhoto = hoveredPhoto;
+  updatePhotoDetail();
 }
 
 
@@ -976,7 +1154,7 @@ function showPhotoPopup(photo, x, y) {
 
   // Popup size adjusts to image
   let popupWidth = max(displayWidth + 40, 260);
-  let popupHeight = displayHeight + 120;
+  let popupHeight = displayHeight + 146;
 
   let popupX = x + 25;
   let popupY = y - popupHeight - 20;
@@ -992,8 +1170,8 @@ function showPhotoPopup(photo, x, y) {
   }
 
   // Popup background
-  fill(255);
-  stroke(190);
+  fill(255, 253, 248);
+  stroke(167, 157, 141);
   strokeWeight(1);
 
   rect(
@@ -1019,7 +1197,7 @@ function showPhotoPopup(photo, x, y) {
 
   // Year
   noStroke();
-  fill(30);
+  fill(36, 33, 28);
   textAlign(CENTER);
   textSize(16);
 
@@ -1030,13 +1208,25 @@ function showPhotoPopup(photo, x, y) {
   );
 
   // Image number
-  fill(100);
+  fill(117, 111, 101);
   textSize(13);
 
   text(
     "Image " + photo.id,
     popupX + popupWidth / 2,
     popupY + displayHeight + 82
+  );
+
+  textSize(12);
+
+  let peopleSummary = photo.people.join(" · ");
+
+  text(
+    peopleSummary,
+    popupX + 18,
+    popupY + displayHeight + 102,
+    popupWidth - 36,
+    40
   );
 }
 
@@ -1060,8 +1250,16 @@ function drawSharedConnections() {
 
     let bottomY = max(yPositions);
 
-    stroke(185);
-    strokeWeight(1);
+    let relevant = isPhotoRelevant(photo);
+    let isSelected = selectedPhoto && selectedPhoto.id === photo.id;
+
+    if (isSelected) {
+      stroke(159, 77, 47, 220);
+      strokeWeight(2);
+    } else {
+      stroke(167, 157, 141, relevant ? 115 : 24);
+      strokeWeight(1);
+    }
 
     line(
       x,
@@ -1071,10 +1269,17 @@ function drawSharedConnections() {
     );
 
     for (let y of yPositions) {
-      fill(247, 247, 245);
-      stroke(105);
-      strokeWeight(1.25);
-      circle(x, y, personNodeSize);
+      if (isSelected) {
+        fill(159, 77, 47);
+        stroke(159, 77, 47);
+        strokeWeight(1.5);
+        circle(x, y, personNodeSize + 2);
+      } else {
+        fill(243, 239, 230, relevant ? 255 : 80);
+        stroke(85, 79, 70, relevant ? 190 : 35);
+        strokeWeight(1.25);
+        circle(x, y, personNodeSize);
+      }
     }
   }
 }
@@ -1093,7 +1298,7 @@ function drawTimeGrid() {
       graphRight
     );
 
-    stroke(232);
+    stroke(216, 208, 194, 105);
     strokeWeight(1);
 
     line(

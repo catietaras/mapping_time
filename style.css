@@ -1,51 +1,58 @@
+:root {
+  --paper: #f3efe6;
+  --paper-deep: #e9e1d3;
+  --ink: #24211c;
+  --muted-ink: #756f65;
+  --line: #d8d0c2;
+  --line-strong: #a79d8d;
+  --accent: #9f4d2f;
+  --accent-soft: #e8cbbb;
+  --panel: #fffdf8;
+}
+
 html,
 body {
   margin: 0;
   padding: 0;
-
   min-height: 100%;
 }
 
 body {
   overflow-x: auto;
-
-  background: #f7f7f5;
-
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
+
+button { font: inherit; }
 
 canvas {
   display: block;
   margin: 0;
 }
 
-#timeline-shell {
-  position: relative;
-}
+#timeline-shell { position: relative; }
 
 #year-ruler {
   position: sticky;
   top: 0;
-  z-index: 3;
-
-  height: 44px;
-
-  background: rgba(247, 247, 245, 0.96);
-  border-bottom: 1px solid #d8d8d4;
+  z-index: 6;
+  height: 48px;
+  background: rgba(243, 239, 230, 0.95);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(10px);
 }
 
 .year-ruler-track {
   position: absolute;
   bottom: 10px;
-
-  border-bottom: 1px solid #9a9a96;
+  border-bottom: 1px solid var(--line-strong);
 }
 
 .year-ruler-tick {
   position: absolute;
-  bottom: 13px;
-
-  color: #4a4a48;
+  bottom: 14px;
+  color: var(--muted-ink);
   font-size: 11px;
   line-height: 1;
   transform: translateX(-50%);
@@ -55,20 +62,17 @@ canvas {
   position: absolute;
   top: 15px;
   left: 50%;
-
   width: 1px;
-  height: 6px;
-
-  background: #6f6f6b;
+  height: 7px;
+  background: var(--line-strong);
   content: "";
 }
 
 #person-labels {
   position: absolute;
-  top: 44px;
+  top: 48px;
   left: 0;
-  z-index: 2;
-
+  z-index: 4;
   pointer-events: none;
 }
 
@@ -76,7 +80,6 @@ canvas {
   position: absolute;
   right: 0;
   left: 0;
-
   display: flex;
   align-items: center;
 }
@@ -84,24 +87,147 @@ canvas {
 .person-label {
   position: sticky;
   left: 0;
-
   align-self: stretch;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-
   box-sizing: border-box;
   width: var(--person-label-width);
   flex: 0 0 var(--person-label-width);
-  padding-right: 25px;
-
-  background: #f7f7f5;
-  color: #282828;
+  padding: 0 25px 0 14px;
+  border: 0;
+  background: linear-gradient(90deg, var(--paper) 86%, rgba(243, 239, 230, 0));
+  color: var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
   font-size: 15px;
   text-align: right;
 }
 
+button.person-label {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+button.person-label:hover,
+button.person-label:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+button.person-label.is-selected {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .photo-band-label {
-  color: #666662;
+  color: var(--muted-ink);
+  font-family: Inter, ui-sans-serif, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+#filter-status {
+  position: absolute;
+  top: 198px;
+  left: 70px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--accent);
   font-size: 13px;
+}
+
+#filter-status[hidden],
+#photo-detail[hidden] { display: none; }
+
+#filter-status button {
+  padding: 3px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+#filter-status button:hover,
+#filter-status button:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+#photo-detail {
+  position: fixed;
+  top: 68px;
+  right: 22px;
+  z-index: 10;
+  box-sizing: border-box;
+  width: min(340px, calc(100vw - 32px));
+  padding: 14px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  box-shadow: 0 18px 45px rgba(50, 42, 30, 0.18);
+}
+
+.photo-detail-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 253, 248, 0.9);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.photo-detail-image {
+  display: block;
+  width: 100%;
+  max-height: 380px;
+  object-fit: contain;
+  background: var(--paper-deep);
+}
+
+.photo-detail-kicker {
+  margin: 16px 0 4px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.photo-detail-year {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 32px;
+  font-weight: 400;
+}
+
+.photo-detail-people {
+  margin: 9px 0 2px;
+  color: var(--muted-ink);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+@media (max-width: 700px) {
+  #photo-detail {
+    top: auto;
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    width: auto;
+  }
+
+  .photo-detail-image { max-height: 34vh; }
 }
