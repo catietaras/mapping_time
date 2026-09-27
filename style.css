@@ -100,3 +100,8 @@ canvas {
   font-size: 15px;
   text-align: right;
 }
+
+.photo-band-label {
+  color: #666662;
+  font-size: 13px;
+}

@@ -379,10 +379,13 @@ function normalizePeople(names) {
 
 let leftMargin = 220;
 let rightMargin = 100;
-let topMargin = 150;
+let topMargin = 190;
 let rowSpacing = 80;
 let sameYearSpacing = 18;
 let minimumCanvasWidth = 1100;
+let photoBandY = 125;
+let photoThumbnailSize = 26;
+let personNodeSize = 7;
 
 let timelineY;
 let photoXPositions = {};
@@ -459,6 +462,18 @@ function createTimelineStructure() {
 
 function renderPersonLabels() {
   personLabelsLayer.replaceChildren();
+
+  let photoRow = document.createElement("div");
+  photoRow.className = "person-label-row photo-band-label-row";
+  photoRow.style.top = `${photoBandY - 25}px`;
+  photoRow.style.height = "50px";
+
+  let photoLabel = document.createElement("span");
+  photoLabel.className = "person-label photo-band-label";
+  photoLabel.textContent = "Photographs";
+
+  photoRow.appendChild(photoLabel);
+  personLabelsLayer.appendChild(photoRow);
 
   people.forEach((person, index) => {
     let row = document.createElement("div");
@@ -710,17 +725,14 @@ function drawPhotoPoints() {
   for (let photo of photoData) {
 
     let x = getPhotoX(photo);
+    let img = images[photo.id];
 
-    for (let person of photo.people) {
-
-      let personIndex = people.indexOf(person);
-
-      let y = topMargin + personIndex * rowSpacing;
-
-      let img = images[photo.id];
-
-      drawThumbnail(img, x, y, 30);
-    }
+    drawThumbnail(
+      img,
+      x,
+      photoBandY,
+      photoThumbnailSize
+    );
   }
 }
 
@@ -892,8 +904,38 @@ function drawHoverImage() {
   let hoveredY = 0;
   let closestDistanceSquared = Infinity;
 
+  function considerHit(photo, x, y, radius) {
+    let isHit =
+      mouseX > x - radius &&
+      mouseX < x + radius &&
+      mouseY > y - radius &&
+      mouseY < y + radius;
+
+    if (!isHit) {
+      return;
+    }
+
+    let distanceSquared =
+      (mouseX - x) ** 2 +
+      (mouseY - y) ** 2;
+
+    if (distanceSquared < closestDistanceSquared) {
+      hoveredPhoto = photo;
+      hoveredX = x;
+      hoveredY = y;
+      closestDistanceSquared = distanceSquared;
+    }
+  }
+
   for (let photo of photoData) {
     let x = getPhotoX(photo);
+
+    considerHit(
+      photo,
+      x,
+      photoBandY,
+      photoThumbnailSize / 2
+    );
 
     for (let person of photo.people) {
 
@@ -901,24 +943,7 @@ function drawHoverImage() {
 
       let y = topMargin + personIndex * rowSpacing;
 
-      let overThumbnail =
-        mouseX > x - 15 &&
-        mouseX < x + 15 &&
-        mouseY > y - 15 &&
-        mouseY < y + 15;
-
-      if (overThumbnail) {
-        let distanceSquared =
-          (mouseX - x) ** 2 +
-          (mouseY - y) ** 2;
-
-        if (distanceSquared < closestDistanceSquared) {
-          hoveredPhoto = photo;
-          hoveredX = x;
-          hoveredY = y;
-          closestDistanceSquared = distanceSquared;
-        }
-      }
+      considerHit(photo, x, y, personNodeSize + 3);
     }
   }
 
@@ -1018,12 +1043,6 @@ function showPhotoPopup(photo, x, y) {
 function drawSharedConnections() {
 
   for (let photo of photoData) {
-
-    // Only connect photographs containing multiple people
-    if (photo.people.length < 2) {
-      continue;
-    }
-
     let x = getPhotoX(photo);
 
     let yPositions = [];
@@ -1039,7 +1058,6 @@ function drawSharedConnections() {
       yPositions.push(y);
     }
 
-    let topY = min(yPositions);
     let bottomY = max(yPositions);
 
     stroke(185);
@@ -1047,10 +1065,17 @@ function drawSharedConnections() {
 
     line(
       x,
-      topY,
+      photoBandY + photoThumbnailSize / 2,
       x,
       bottomY
     );
+
+    for (let y of yPositions) {
+      fill(247, 247, 245);
+      stroke(105);
+      strokeWeight(1.25);
+      circle(x, y, personNodeSize);
+    }
   }
 }
 
@@ -1073,7 +1098,7 @@ function drawTimeGrid() {
 
     line(
       x,
-      topMargin - 30,
+      photoBandY - photoThumbnailSize / 2,
       x,
       timelineY
     );
