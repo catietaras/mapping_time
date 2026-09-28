@@ -357,955 +357,603 @@ let photoData = [
 ];
 
 
-// These variables are created automatically.
+// D3 renders the archive as SVG, while native HTML handles labels and details.
 
-let people = [];
-let images = {};
+const layout = {
+  left: 220,
+  right: 100,
+  top: 290,
+  row: 48,
+  sameYear: 22,
+  minWidth: 1100,
+  photoY: 225,
+  thumbnail: 32,
+  node: 8
+};
 
+photoData = photoData.map(photo => ({
+  ...photo,
+  people: [...new Set(photo.people.map(name => name.trim()).filter(Boolean))]
+}));
 
-// Keep person lists clean even when future photo data contains
-// extra whitespace, blank entries, or the same name more than once.
+const people = [...new Set(photoData.flatMap(photo => photo.people))];
+const personIndex = new Map(people.map((person, index) => [person, index]));
+const personKey = new Map(people.map((person, index) => [person, `person-${index}`]));
+const timelineShell = d3.select("#timeline-shell");
+const visualization = d3.select("#visualization");
+const personLabelsLayer = d3.select("#person-labels");
+const yearRuler = d3.select("#year-ruler");
+const filterStatus = d3.select("#filter-status");
+const photoDetail = d3.select("#photo-detail");
+const photoPreview = d3.select("#photo-preview");
 
-function normalizePeople(names) {
-  return [...new Set(
-    names
-      .map(name => name.trim())
-      .filter(Boolean)
-  )];
-}
-
-
-// Graph measurements
-
-let leftMargin = 220;
-let rightMargin = 100;
-let topMargin = 250;
-let rowSpacing = 48;
-let sameYearSpacing = 22;
-let minimumCanvasWidth = 1100;
-let photoBandY = 185;
-let photoThumbnailSize = 32;
-let personNodeSize = 8;
-
-let timelineY;
-let photoXPositions = {};
-let timelineShell;
-let yearRuler;
-let canvasContainer;
-let personLabelsLayer;
-let photoDetailPanel;
-let filterStatus;
 let selectedPhoto = null;
 let selectedPerson = null;
-let hoveredPhoto = null;
+let resizeFrame = null;
+let marks = {};
+let previewPhotoId = null;
+const decodedPhotos = new Set();
+const photoDecodePromises = new Map();
 
+function warmPhoto(photo) {
+  if (decodedPhotos.has(photo.id)) return Promise.resolve();
+  if (photoDecodePromises.has(photo.id)) return photoDecodePromises.get(photo.id);
 
-function calculatePhotoXPositions() {
-  let graphRight = width - rightMargin;
-  let photosByYear = new Map();
-
-  for (let photo of photoData) {
-    if (!photosByYear.has(photo.year)) {
-      photosByYear.set(photo.year, []);
-    }
-
-    photosByYear.get(photo.year).push(photo);
-  }
-
-  for (let [year, photos] of photosByYear) {
-    let yearX = map(
-      year,
-      minYear,
-      maxYear,
-      leftMargin,
-      graphRight
-    );
-
-    let groupWidth = (photos.length - 1) * sameYearSpacing;
-    let startX = constrain(
-      yearX - groupWidth / 2,
-      leftMargin,
-      graphRight - groupWidth
-    );
-
-    photos.forEach((photo, index) => {
-      photoXPositions[photo.id] = startX + index * sameYearSpacing;
+  const image = new Image();
+  image.decoding = "async";
+  image.src = `images/${photo.id}.jpg`;
+  const decodePromise = image.decode()
+    .catch(() => {})
+    .then(() => {
+      decodedPhotos.add(photo.id);
+      photoDecodePromises.delete(photo.id);
     });
-  }
+  photoDecodePromises.set(photo.id, decodePromise);
+  return decodePromise;
 }
-
-
-function getPhotoX(photo) {
-  return photoXPositions[photo.id];
-}
-
-
-function getResponsiveCanvasWidth() {
-  return max(windowWidth, minimumCanvasWidth);
-}
-
-
-function createTimelineStructure() {
-  timelineShell = document.createElement("main");
-  timelineShell.id = "timeline-shell";
-
-  yearRuler = document.createElement("div");
-  yearRuler.id = "year-ruler";
-  yearRuler.setAttribute("aria-label", "Timeline years 1900 to 2023");
-
-  canvasContainer = document.createElement("div");
-  canvasContainer.id = "canvas-container";
-
-  personLabelsLayer = document.createElement("div");
-  personLabelsLayer.id = "person-labels";
-  personLabelsLayer.setAttribute("aria-label", "People in the archive");
-
-  timelineShell.append(yearRuler, canvasContainer, personLabelsLayer);
-  document.body.appendChild(timelineShell);
-
-  filterStatus = document.createElement("div");
-  filterStatus.id = "filter-status";
-  filterStatus.hidden = true;
-  timelineShell.appendChild(filterStatus);
-
-  photoDetailPanel = document.createElement("aside");
-  photoDetailPanel.id = "photo-detail";
-  photoDetailPanel.hidden = true;
-  photoDetailPanel.setAttribute("aria-live", "polite");
-  document.body.appendChild(photoDetailPanel);
-}
-
-
-function setPersonFilter(person) {
-  selectedPerson = selectedPerson === person ? null : person;
-  selectedPhoto = null;
-  updatePhotoDetail();
-  updateFilterStatus();
-  renderPersonLabels();
-}
-
-
-function updateFilterStatus() {
-  filterStatus.replaceChildren();
-  filterStatus.hidden = !selectedPerson;
-
-  if (!selectedPerson) {
-    return;
-  }
-
-  let text = document.createElement("span");
-  let count = photoData.filter(photo => photo.people.includes(selectedPerson)).length;
-  text.textContent = `${selectedPerson} · ${count} photograph${count === 1 ? "" : "s"}`;
-
-  let clearButton = document.createElement("button");
-  clearButton.type = "button";
-  clearButton.textContent = "Clear";
-  clearButton.addEventListener("click", () => setPersonFilter(selectedPerson));
-
-  filterStatus.append(text, clearButton);
-}
-
-
-function updatePhotoDetail() {
-  photoDetailPanel.replaceChildren();
-  photoDetailPanel.hidden = !selectedPhoto;
-
-  if (!selectedPhoto) {
-    return;
-  }
-
-  let closeButton = document.createElement("button");
-  closeButton.type = "button";
-  closeButton.className = "photo-detail-close";
-  closeButton.setAttribute("aria-label", "Close photograph details");
-  closeButton.textContent = "×";
-  closeButton.addEventListener("click", () => {
-    selectedPhoto = null;
-    updatePhotoDetail();
-  });
-
-  let img = document.createElement("img");
-  img.className = "photo-detail-image";
-  img.src = `images/${selectedPhoto.id}.jpg`;
-  img.alt = `Archive photograph ${selectedPhoto.id} from ${selectedPhoto.year}`;
-
-  let kicker = document.createElement("p");
-  kicker.className = "photo-detail-kicker";
-  kicker.textContent = `Photograph ${selectedPhoto.id}`;
-
-  let year = document.createElement("h2");
-  year.className = "photo-detail-year";
-  year.textContent = selectedPhoto.year;
-
-  let peopleList = document.createElement("p");
-  peopleList.className = "photo-detail-people";
-  peopleList.textContent = selectedPhoto.people.join(" · ");
-
-  photoDetailPanel.append(closeButton, img, kicker, year, peopleList);
-}
-
-
-function renderPersonLabels() {
-  personLabelsLayer.replaceChildren();
-
-  let photoRow = document.createElement("div");
-  photoRow.className = "person-label-row photo-band-label-row";
-  photoRow.style.top = `${photoBandY - 25}px`;
-  photoRow.style.height = "50px";
-
-  let photoLabel = document.createElement("span");
-  photoLabel.className = "person-label photo-band-label";
-  photoLabel.textContent = "Photographs";
-
-  photoRow.appendChild(photoLabel);
-  personLabelsLayer.appendChild(photoRow);
-
-  people.forEach((person, index) => {
-    let row = document.createElement("div");
-    row.className = "person-label-row";
-    row.style.top = `${topMargin + index * rowSpacing - rowSpacing / 2}px`;
-    row.style.height = `${rowSpacing}px`;
-
-    let label = document.createElement("button");
-    label.type = "button";
-    label.className = "person-label";
-    label.textContent = person;
-    label.setAttribute("aria-pressed", selectedPerson === person ? "true" : "false");
-    label.setAttribute("aria-label", `Show photographs featuring ${person}`);
-    label.classList.toggle("is-selected", selectedPerson === person);
-    label.addEventListener("click", () => setPersonFilter(person));
-
-    row.appendChild(label);
-    personLabelsLayer.appendChild(row);
-  });
-}
-
-
-function renderYearRuler() {
-  yearRuler.replaceChildren();
-
-  let track = document.createElement("div");
-  track.className = "year-ruler-track";
-  track.style.left = `${leftMargin}px`;
-  track.style.right = `${rightMargin}px`;
-  yearRuler.appendChild(track);
-
-  let years = [];
-
-  for (let year = minYear; year <= maxYear; year += 10) {
-    if (maxYear - year >= 5) {
-      years.push(year);
-    }
-  }
-
-  years.push(maxYear);
-
-  for (let year of years) {
-    let tick = document.createElement("span");
-    tick.className = "year-ruler-tick";
-    tick.textContent = year;
-    tick.style.left = `${map(
-      year,
-      minYear,
-      maxYear,
-      leftMargin,
-      width - rightMargin
-    )}px`;
-    yearRuler.appendChild(tick);
-  }
-}
-
-
-function updateTimelineStructure() {
-  timelineShell.style.width = `${width}px`;
-  timelineShell.style.setProperty("--person-label-width", `${leftMargin}px`);
-  personLabelsLayer.style.width = `${width}px`;
-  personLabelsLayer.style.height = `${height}px`;
-  renderYearRuler();
-}
-
-
-// -------------------------------------
-// LOAD IMAGES
-// -------------------------------------
-
-function preload() {
-
-  for (let photo of photoData) {
-
-    let filePath = "images/" + photo.id + ".jpg";
-
-    images[photo.id] = loadImage(filePath);
-
-  }
-
-}
-
-
-// -------------------------------------
-// SETUP
-// -------------------------------------
-
-function setup() {
-
-  photoData = photoData.map(photo => ({
-    ...photo,
-    people: normalizePeople(photo.people)
-  }));
-
-  // Automatically find every unique person
-  // mentioned in the photo data.
-
-  let allNames = [];
-
-  for (let photo of photoData) {
-
-    for (let person of photo.people) {
-
-      if (!allNames.includes(person)) {
-        allNames.push(person);
-      }
-
-    }
-
-  }
-
-  people = allNames;
-
-
-  // Canvas gets taller if you add more people.
-
-  let canvasHeight =
-    topMargin +
-    people.length * rowSpacing +
-    140;
-
-
-  createTimelineStructure();
-
-  let canvas = createCanvas(getResponsiveCanvasWidth(), canvasHeight);
-  canvas.parent(canvasContainer);
-
-  calculatePhotoXPositions();
-  renderPersonLabels();
-  updateTimelineStructure();
-
-  textFont("Arial");
-
-  timelineY =
-    topMargin +
-    people.length * rowSpacing +
-    30;
-}
-
-
-function windowResized() {
-  if (!timelineShell) {
-    return;
-  }
-
-  resizeCanvas(getResponsiveCanvasWidth(), height);
-  calculatePhotoXPositions();
-  updateTimelineStructure();
-}
-
-
-// -------------------------------------
-// DRAW
-// -------------------------------------
-
-function draw() {
-
-  background(243, 239, 230);
-
-  drawTitle();
-
-  drawTimeGrid();
-
-  drawActivityBands();
-
-  drawGuideLines();
-
-  drawSharedConnections();
-
-  drawPhotoPoints();
-
-  drawTimeline();
-
-  drawHoverImage();
-
-}
-
-
-
-
-// -------------------------------------
-// TITLE
-// -------------------------------------
-
-function drawTitle() {
-
-  noStroke();
-
-  fill(159, 77, 47);
-
-  textAlign(LEFT);
-
-  textFont("Arial");
-
-  textStyle(BOLD);
-
-  textSize(11);
-
-  text(
-    "A FAMILY PHOTOGRAPH ARCHIVE · 1900–2023",
-    70,
-    42
-  );
-
-  fill(36, 33, 28);
-
-  textAlign(LEFT);
-
-  textFont("Georgia");
-
-  textStyle(NORMAL);
-
-  textSize(38);
-
-  text(
-    "Relational Archive",
-    70,
-    82
-  );
-
-
-  fill(117, 111, 101);
-
-  textFont("Arial");
-
-  textSize(14);
-
-  text(
-    "Follow a name across time, or open a photograph to see who shares the moment.",
-    70,
-    110
-  );
-
-  textSize(12);
-
-  text(
-    "HOVER TO PREVIEW  ·  CLICK TO KEEP OPEN  ·  SELECT A NAME TO TRACE",
-    70,
-    137
-  );
-
-}
-
 
 function isPhotoRelevant(photo) {
   return !selectedPerson || photo.people.includes(selectedPerson);
 }
 
-
-function drawActivityBands() {
-  let graphRight = width - rightMargin;
-
-  for (let i = 0; i < people.length; i++) {
-    let person = people[i];
-    let personPhotos = photoData.filter(photo => photo.people.includes(person));
-    let years = personPhotos.map(photo => photo.year);
-    let startX = map(min(years), minYear, maxYear, leftMargin, graphRight);
-    let endX = map(max(years), minYear, maxYear, leftMargin, graphRight);
-    let y = topMargin + i * rowSpacing;
-    let active = !selectedPerson || selectedPerson === person;
-
-    stroke(active ? 167 : 206, active ? 157 : 198, active ? 141 : 185, active ? 150 : 80);
-    strokeWeight(selectedPerson === person ? 6 : 3);
-    line(startX, y, max(startX + 5, endX), y);
-
-    if (selectedPerson === person) {
-      noStroke();
-      fill(159, 77, 47);
-      circle(startX, y, 7);
-      circle(max(startX + 5, endX), y, 7);
-    }
-  }
+function getDimensions() {
+  const width = Math.max(window.innerWidth, layout.minWidth);
+  const timelineY = layout.top + people.length * layout.row + 30;
+  return { width, height: timelineY + 90, graphRight: width - layout.right, timelineY };
 }
 
-
-// -------------------------------------
-// PEOPLE + GUIDE LINES
-// -------------------------------------
-
-function drawGuideLines() {
-
-  let graphRight =
-    width - rightMargin;
-
-
-  for (let i = 0; i < people.length; i++) {
-
-    let y =
-      topMargin +
-      i * rowSpacing;
-
-
-    // Horizontal guide line
-
-    stroke(216, 208, 194, selectedPerson && selectedPerson !== people[i] ? 75 : 150);
-
-    strokeWeight(1);
-
-    line(
-      leftMargin,
-      y,
-      graphRight,
-      y
-    );
-
-  }
-
+function getYearTicks() {
+  return d3.range(minYear, maxYear + 1, 10)
+    .filter(year => maxYear - year >= 5)
+    .concat(maxYear);
 }
 
+function getPhotoPositions(xScale) {
+  const positions = new Map();
+  const byYear = d3.group(photoData, photo => photo.year);
 
-// -------------------------------------
-// PHOTO POINTS
-// -------------------------------------
-
-function drawPhotoPoints() {
-
-  for (let photo of photoData) {
-
-    let x = getPhotoX(photo);
-    let img = images[photo.id];
-
-    drawThumbnail(
-      img,
-      x,
-      photoBandY,
-      photoThumbnailSize,
-      isPhotoRelevant(photo) ? 255 : 45,
-      selectedPhoto && selectedPhoto.id === photo.id
+  byYear.forEach((photos, year) => {
+    const groupWidth = (photos.length - 1) * layout.sameYear;
+    const start = Math.max(
+      layout.left,
+      Math.min(xScale(year) - groupWidth / 2, xScale.range()[1] - groupWidth)
     );
-  }
+    photos.forEach((photo, index) => positions.set(photo.id, start + index * layout.sameYear));
+  });
+
+  return positions;
 }
 
-function drawThumbnail(img, x, y, size, alpha = 255, isSelected = false) {
-  let side = min(img.width, img.height);
-
-  let sx = (img.width - side) / 2;
-  let sy = (img.height - side) / 2;
-
-  imageMode(CENTER);
-
-  tint(255, alpha);
-
-  image(
-    img,
-    x,
-    y,
-    size,
-    size,
-    sx,
-    sy,
-    side,
-    side
-  );
-
-  noTint();
-
-  imageMode(CORNER);
-
-  noFill();
-  stroke(isSelected ? color(159, 77, 47) : color(255, 253, 248, alpha));
-  strokeWeight(isSelected ? 3 : 1);
-  rectMode(CENTER);
-  rect(x, y, size + (isSelected ? 4 : 0), size + (isSelected ? 4 : 0));
-  rectMode(CORNER);
+function setPersonFilter(person) {
+  const previousPerson = selectedPerson;
+  const previousPhoto = selectedPhoto;
+  selectedPerson = selectedPerson === person ? null : person;
+  selectedPhoto = null;
+  hidePreview();
+  updatePhotoSelection(previousPhoto, null);
+  updatePersonLabelState(previousPerson, selectedPerson);
+  updateFilterStatus();
+  updatePhotoDetail();
+  updateFilterMarks();
 }
 
-
-// -------------------------------------
-// TIMELINE
-// -------------------------------------
-
-function drawTimeline() {
-
-  let graphRight =
-    width - rightMargin;
-
-
-  // Main axis
-
-  stroke(50);
-
-  strokeWeight(1.5);
-
-  line(
-    leftMargin,
-    timelineY,
-    graphRight,
-    timelineY
-  );
-
-
-  // Decades, omitting the last one when it would collide with the endpoint.
-
-  for (
-    let year = minYear;
-    year <= maxYear;
-    year += 10
-  ) {
-
-    if (maxYear - year < 5) {
-      continue;
-    }
-
-    let x =
-      map(
-        year,
-        minYear,
-        maxYear,
-        leftMargin,
-        graphRight
-      );
-
-
-    stroke(70);
-
-    strokeWeight(1);
-
-    line(
-      x,
-      timelineY - 6,
-      x,
-      timelineY + 6
-    );
-
-
-    noStroke();
-
-    fill(60);
-
-    textAlign(CENTER);
-
-    textSize(11);
-
-    text(
-      year,
-      x,
-      timelineY + 24
-    );
-
-  }
-
-
-  // Final endpoint
-
-  let endpointX =
-    map(
-      maxYear,
-      minYear,
-      maxYear,
-      leftMargin,
-      graphRight
-    );
-
-
-  stroke(50);
-
-  line(
-    endpointX,
-    timelineY - 8,
-    endpointX,
-    timelineY + 8
-  );
-
-
-  noStroke();
-
-  fill(40);
-
-  textAlign(CENTER);
-
-  textSize(11);
-
-  text(
-    maxYear,
-    endpointX,
-    timelineY + 24
-  );
-
-
-  // Axis title
-
-  fill(70);
-
-  textSize(14);
-
-  text(
-    "Time",
-    (leftMargin + graphRight) / 2,
-    timelineY + 65
-  );
-
+function selectPhoto(photo) {
+  if (!isPhotoRelevant(photo)) return;
+  if (selectedPhoto?.id === photo.id) return;
+  const previousPhoto = selectedPhoto;
+  selectedPhoto = photo;
+  hidePreview();
+  updatePhotoDetail();
+  updatePhotoSelection(previousPhoto, photo);
 }
 
+function renderPersonLabels(height) {
+  personLabelsLayer
+    .style("width", `${getDimensions().width}px`)
+    .style("height", `${height}px`);
 
-// -------------------------------------
-// HOVER INTERACTION
-// -------------------------------------
+  const rows = [{ person: null, label: "Photographs", y: layout.photoY }]
+    .concat(people.map((person, index) => ({
+      person,
+      label: person,
+      y: layout.top + index * layout.row
+    })));
 
-function drawHoverImage() {
-  hoveredPhoto = null;
-  let hoveredX = 0;
-  let hoveredY = 0;
-  let closestDistanceSquared = Infinity;
+  const row = personLabelsLayer.selectAll(".person-label-row")
+    .data(rows, item => item.label)
+    .join(enter => {
+      const wrapper = enter.append("div").attr("class", "person-label-row");
+      wrapper.filter(item => item.person === null)
+        .append("span")
+        .attr("class", "person-label photo-band-label");
+      wrapper.filter(item => item.person !== null)
+        .append("button")
+        .attr("type", "button")
+        .attr("class", "person-label")
+        .on("click", (_, item) => setPersonFilter(item.person));
+      return wrapper;
+    })
+    .style("top", item => `${item.y - layout.row / 2}px`)
+    .style("height", `${layout.row}px`);
 
-  function considerHit(photo, x, y, radius) {
-    let isHit =
-      mouseX > x - radius &&
-      mouseX < x + radius &&
-      mouseY > y - radius &&
-      mouseY < y + radius;
+  row.select(".person-label")
+    .text(item => item.label)
+    .attr("aria-label", item => item.person ? `Show photographs featuring ${item.person}` : null);
 
-    if (!isHit) {
-      return;
-    }
-
-    let distanceSquared =
-      (mouseX - x) ** 2 +
-      (mouseY - y) ** 2;
-
-    if (distanceSquared < closestDistanceSquared) {
-      hoveredPhoto = photo;
-      hoveredX = x;
-      hoveredY = y;
-      closestDistanceSquared = distanceSquared;
-    }
-  }
-
-  for (let photo of photoData) {
-    if (!isPhotoRelevant(photo)) {
-      continue;
-    }
-
-    let x = getPhotoX(photo);
-
-    considerHit(
-      photo,
-      x,
-      photoBandY,
-      photoThumbnailSize / 2
-    );
-
-    for (let person of photo.people) {
-
-      let personIndex = people.indexOf(person);
-
-      let y = topMargin + personIndex * rowSpacing;
-
-      considerHit(photo, x, y, personNodeSize + 3);
-    }
-  }
-
-  if (hoveredPhoto) {
-    cursor(HAND);
-    if (!selectedPhoto || selectedPhoto.id !== hoveredPhoto.id) {
-      showPhotoPopup(hoveredPhoto, hoveredX, hoveredY);
-    }
-  } else {
-    cursor(ARROW);
-  }
+  updatePersonLabelState();
 }
 
+function updatePersonLabelState(previousPerson, nextPerson) {
+  const labels = personLabelsLayer.selectAll("button.person-label");
 
-function mousePressed() {
-  if (!hoveredPhoto) {
+  if (arguments.length === 0) {
+    labels
+      .classed("is-selected", item => item.person === selectedPerson)
+      .attr("aria-pressed", item => String(item.person === selectedPerson));
     return;
   }
 
-  selectedPhoto = hoveredPhoto;
-  updatePhotoDetail();
+  if (previousPerson) {
+    labels.filter(item => item.person === previousPerson)
+      .classed("is-selected", false)
+      .attr("aria-pressed", "false");
+  }
+  if (nextPerson) {
+    labels.filter(item => item.person === nextPerson)
+      .classed("is-selected", true)
+      .attr("aria-pressed", "true");
+  }
 }
 
-
-// -------------------------------------
-// PHOTO POPUP
-// -------------------------------------
-
-function showPhotoPopup(photo, x, y) {
-
-  let img = images[photo.id];
-
-  // Maximum image size
-  let maxImageWidth = 400;
-  let maxImageHeight = 280;
-
-  // Preserve original image aspect ratio
-  let scaleFactor = min(
-    maxImageWidth / img.width,
-    maxImageHeight / img.height
-  );
-
-  let displayWidth = img.width * scaleFactor;
-  let displayHeight = img.height * scaleFactor;
-
-  // Popup size adjusts to image
-  let popupWidth = max(displayWidth + 40, 260);
-  let popupHeight = displayHeight + 146;
-
-  let popupX = x + 25;
-  let popupY = y - popupHeight - 20;
-
-  // Keep popup inside right edge
-  if (popupX + popupWidth > width - 20) {
-    popupX = x - popupWidth - 25;
-  }
-
-  // Keep popup inside top edge
-  if (popupY < 20) {
-    popupY = y + 25;
-  }
-
-  // Popup background
-  fill(255, 253, 248);
-  stroke(167, 157, 141);
-  strokeWeight(1);
-
-  rect(
-    popupX,
-    popupY,
-    popupWidth,
-    popupHeight,
-    8
-  );
-
-  // Draw photograph
-  imageMode(CENTER);
-
-  image(
-    img,
-    popupX + popupWidth / 2,
-    popupY + 20 + displayHeight / 2,
-    displayWidth,
-    displayHeight
-  );
-
-  imageMode(CORNER);
-
-  // Year
-  noStroke();
-  fill(36, 33, 28);
-  textAlign(CENTER);
-  textSize(16);
-
-  text(
-    photo.year,
-    popupX + popupWidth / 2,
-    popupY + displayHeight + 55
-  );
-
-  // Image number
-  fill(117, 111, 101);
-  textSize(13);
-
-  text(
-    "Image " + photo.id,
-    popupX + popupWidth / 2,
-    popupY + displayHeight + 82
-  );
-
-  textSize(12);
-
-  let peopleSummary = photo.people.join(" · ");
-
-  text(
-    peopleSummary,
-    popupX + 18,
-    popupY + displayHeight + 102,
-    popupWidth - 36,
-    40
-  );
+function renderYearRuler(width, xScale) {
+  yearRuler.selectAll("svg")
+    .data([null])
+    .join("svg")
+    .attr("width", width)
+    .attr("height", 48)
+    .attr("viewBox", `0 0 ${width} 48`)
+    .selectAll("g")
+    .data([null])
+    .join("g")
+    .attr("class", "ruler-axis")
+    .attr("transform", "translate(0,37)")
+    .call(d3.axisTop(xScale).tickValues(getYearTicks()).tickFormat(d3.format("d")).tickSize(7));
 }
 
-function drawSharedConnections() {
+function updateFilterStatus() {
+  filterStatus.attr("hidden", selectedPerson ? null : true);
+  if (selectedPerson) {
+    const count = photoData.filter(photo => photo.people.includes(selectedPerson)).length;
+    filterStatus.select("span")
+      .text(`${selectedPerson} · ${count} photograph${count === 1 ? "" : "s"}`);
+  }
+}
 
-  for (let photo of photoData) {
-    let x = getPhotoX(photo);
+function updatePhotoDetail() {
+  photoDetail.attr("hidden", selectedPhoto ? null : true);
+  if (!selectedPhoto) return;
 
-    let yPositions = [];
+  const photo = selectedPhoto;
+  const detailImage = photoDetail.select(".photo-detail-image");
+  const imageUrl = `images/${photo.id}.jpg`;
+  const imageAlt = `Archive photograph ${photo.id} from ${photo.year}`;
 
-    for (let person of photo.people) {
+  detailImage
+    .classed("is-loading", !decodedPhotos.has(photo.id))
+    .attr("alt", decodedPhotos.has(photo.id) ? imageAlt : "");
 
-      let personIndex = people.indexOf(person);
+  if (decodedPhotos.has(photo.id)) {
+    detailImage.attr("src", imageUrl);
+  } else {
+    detailImage.attr("src", null);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (selectedPhoto?.id !== photo.id) return;
+      detailImage.attr("src", imageUrl);
+      warmPhoto(photo).then(() => {
+        if (selectedPhoto?.id !== photo.id) return;
+        detailImage
+          .classed("is-loading", false)
+          .attr("alt", imageAlt);
+      });
+    }));
+  }
+  photoDetail.select(".photo-detail-kicker")
+    .text(`Photograph ${photo.id}`);
+  photoDetail.select(".photo-detail-year")
+    .text(photo.year);
+  photoDetail.select(".photo-detail-people")
+    .text(photo.people.join(" · "));
+}
 
-      let y =
-        topMargin +
-        personIndex * rowSpacing;
+function showPreview(event, photo) {
+  if (!isPhotoRelevant(photo) || selectedPhoto?.id === photo.id) {
+    hidePreview();
+    return;
+  }
 
-      yPositions.push(y);
-    }
+  photoPreview.attr("hidden", null);
+  if (previewPhotoId !== photo.id) {
+    previewPhotoId = photo.id;
+    const previewImage = photoPreview.select("img").attr("alt", "");
+    const imageUrl = `images/${photo.id}.jpg`;
 
-    let bottomY = max(yPositions);
-
-    let relevant = isPhotoRelevant(photo);
-    let isSelected = selectedPhoto && selectedPhoto.id === photo.id;
-
-    if (isSelected) {
-      stroke(159, 77, 47, 220);
-      strokeWeight(2);
+    if (decodedPhotos.has(photo.id)) {
+      previewImage.attr("src", imageUrl);
     } else {
-      stroke(167, 157, 141, relevant ? 115 : 24);
-      strokeWeight(1);
+      previewImage.attr("src", null);
+      warmPhoto(photo).then(() => {
+        if (previewPhotoId === photo.id) previewImage.attr("src", imageUrl);
+      });
     }
+    photoPreview.select(".photo-preview-year").text(photo.year);
+    photoPreview.select(".photo-preview-id").text(`Photograph ${photo.id}`);
+    photoPreview.select(".photo-preview-people").text(photo.people.join(" · "));
+  }
+  movePreview(event);
+}
 
-    line(
-      x,
-      photoBandY + photoThumbnailSize / 2,
-      x,
-      bottomY
-    );
+function movePreview(event) {
+  if (photoPreview.attr("hidden") !== null) return;
+  const node = photoPreview.node();
+  const gap = 18;
+  const rect = node.getBoundingClientRect();
+  let left = event.clientX + gap;
+  let top = event.clientY - rect.height - gap;
+  if (left + rect.width > window.innerWidth - 12) left = event.clientX - rect.width - gap;
+  if (top < 12) top = event.clientY + gap;
+  photoPreview.style("left", `${Math.max(12, left)}px`).style("top", `${top}px`);
+}
 
-    for (let y of yPositions) {
-      if (isSelected) {
-        fill(159, 77, 47);
-        stroke(159, 77, 47);
-        strokeWeight(1.5);
-        circle(x, y, personNodeSize + 2);
-      } else {
-        fill(243, 239, 230, relevant ? 255 : 80);
-        stroke(85, 79, 70, relevant ? 190 : 35);
-        strokeWeight(1.25);
-        circle(x, y, personNodeSize);
+function hidePreview() {
+  previewPhotoId = null;
+  photoPreview.attr("hidden", true);
+}
+
+function bindPhotoInteraction(selection, photoAccessor = item => item) {
+  selection
+    .attr("tabindex", 0)
+    .attr("role", "button")
+    .attr("aria-label", item => {
+      const photo = photoAccessor(item);
+      return `Photograph ${photo.id}, ${photo.year}: ${photo.people.join(", ")}`;
+    })
+    .on("pointerenter", (event, item) => showPreview(event, photoAccessor(item)))
+    .on("pointermove", movePreview)
+    .on("pointerleave", hidePreview)
+    .on("focus", (event, item) => {
+      if (!event.currentTarget.matches(":focus-visible")) return;
+      const rect = event.currentTarget.getBoundingClientRect();
+      showPreview(
+        { clientX: rect.right, clientY: rect.top + rect.height / 2 },
+        photoAccessor(item)
+      );
+    })
+    .on("blur", hidePreview)
+    .on("click", (_, item) => selectPhoto(photoAccessor(item)))
+    .on("keydown", (event, item) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectPhoto(photoAccessor(item));
       }
-    }
-  }
+    });
 }
 
-function drawTimeGrid() {
-
-  let graphRight = width - rightMargin;
-
-  for (let year = 1900; year <= 2020; year += 10) {
-
-    let x = map(
-      year,
-      minYear,
-      maxYear,
-      leftMargin,
-      graphRight
-    );
-
-    stroke(216, 208, 194, 105);
-    strokeWeight(1);
-
-    line(
-      x,
-      photoBandY - photoThumbnailSize / 2,
-      x,
-      timelineY
-    );
-  }
+function updateFilterMarks() {
+  marks.updatePersonHighlight?.(selectedPerson);
 }
+
+function updatePhotoSelection(previousPhoto, nextPhoto) {
+  if (!marks.connections) return;
+
+  const toggle = (photo, selected) => {
+    if (!photo) return;
+    marks.connections.filter(item => item.id === photo.id).classed("is-selected", selected);
+    marks.nodes.filter(item => item.photo.id === photo.id).classed("is-selected", selected);
+    marks.thumbnails.filter(item => item.id === photo.id).classed("is-selected", selected);
+  };
+
+  toggle(previousPhoto, false);
+  toggle(nextPhoto, true);
+}
+
+function initializePanels() {
+  filterStatus.append("span");
+  filterStatus.append("button")
+    .attr("type", "button")
+    .text("Clear")
+    .on("click", () => setPersonFilter(selectedPerson));
+
+  photoDetail.append("button")
+    .attr("type", "button")
+    .attr("class", "photo-detail-close")
+    .attr("aria-label", "Close photograph details")
+    .text("×")
+    .on("click", () => {
+      const previousPhoto = selectedPhoto;
+      selectedPhoto = null;
+      updatePhotoDetail();
+      updatePhotoSelection(previousPhoto, null);
+    });
+  photoDetail.append("img").attr("class", "photo-detail-image");
+  photoDetail.append("p").attr("class", "photo-detail-kicker");
+  photoDetail.append("h2").attr("class", "photo-detail-year");
+  photoDetail.append("p").attr("class", "photo-detail-people");
+
+  photoPreview.append("img");
+  photoPreview.append("p").attr("class", "photo-preview-year");
+  photoPreview.append("p").attr("class", "photo-preview-id");
+  photoPreview.append("p").attr("class", "photo-preview-people");
+}
+
+function render() {
+  const { width, height, graphRight, timelineY } = getDimensions();
+  const xScale = d3.scaleLinear().domain([minYear, maxYear]).range([layout.left, graphRight]);
+  const photoX = getPhotoPositions(xScale);
+  const yForPerson = person => layout.top + personIndex.get(person) * layout.row;
+
+  timelineShell
+    .style("width", `${width}px`)
+    .style("--person-label-width", `${layout.left}px`);
+  renderPersonLabels(height);
+  renderYearRuler(width, xScale);
+  updateFilterStatus();
+  updatePhotoDetail();
+
+  const svg = visualization.selectAll("svg")
+    .data([null])
+    .join("svg")
+    .attr("class", "archive-chart")
+    .attr("width", width)
+    .attr("height", height)
+    .attr("viewBox", `0 0 ${width} ${height}`)
+    .attr("role", "img")
+    .attr("aria-labelledby", "archive-title archive-description");
+  marks.svg = svg;
+
+  svg.selectAll("*").remove();
+  svg.append("title").attr("id", "archive-title").text("Relational Archive");
+  svg.append("desc").attr("id", "archive-description")
+    .text("A timeline connecting 52 family photographs to the people who appear in them, from 1900 to 2023.");
+
+  const title = svg.append("g").attr("class", "chart-title");
+  title.append("text").attr("class", "chart-kicker").attr("x", 70).attr("y", 42)
+    .text("A FAMILY PHOTOGRAPH ARCHIVE · 1900–2023");
+  title.append("text").attr("class", "chart-heading").attr("x", 70).attr("y", 82)
+    .text("Relational Archive");
+  title.append("text").attr("class", "chart-deck").attr("x", 70).attr("y", 110)
+    .text("Follow a name across time, or open a photograph to see who shares the moment.");
+  title.append("text").attr("class", "chart-instructions").attr("x", 70).attr("y", 137)
+    .text("HOVER TO PREVIEW  ·  CLICK TO KEEP OPEN  ·  SELECT A NAME TO TRACE");
+
+  const decadeTicks = d3.range(1900, 2021, 10);
+  svg.append("g").attr("class", "time-grid")
+    .selectAll("line")
+    .data(decadeTicks)
+    .join("line")
+    .attr("x1", xScale).attr("x2", xScale)
+    .attr("y1", layout.photoY - layout.thumbnail / 2)
+    .attr("y2", timelineY);
+
+  marks.guides = svg.append("g").attr("class", "guide-lines")
+    .selectAll("line")
+    .data(people)
+    .join("line")
+    .attr("x1", layout.left).attr("x2", graphRight)
+    .attr("y1", yForPerson).attr("y2", yForPerson)
+    .attr("data-person-id", person => personKey.get(person));
+
+  const activityData = people.map(person => {
+    const years = photoData.filter(photo => photo.people.includes(person)).map(photo => photo.year);
+    return { person, start: d3.min(years), end: d3.max(years) };
+  });
+  marks.activity = svg.append("g").attr("class", "activity-bands")
+    .selectAll("line")
+    .data(activityData)
+    .join("line")
+    .attr("x1", item => xScale(item.start))
+    .attr("x2", item => Math.max(xScale(item.start) + 5, xScale(item.end)))
+    .attr("y1", item => yForPerson(item.person))
+    .attr("y2", item => yForPerson(item.person))
+    .attr("data-person-id", item => personKey.get(item.person));
+
+  const connectionLayer = svg.append("g").attr("class", "connections");
+  marks.connections = connectionLayer.selectAll("line")
+    .data(photoData)
+    .join("line")
+    .attr("class", "photo-connection")
+    .attr("data-photo-id", photo => photo.id)
+    .attr("data-people", photo => photo.people.map(person => personKey.get(person)).join(" "))
+    .attr("x1", photo => photoX.get(photo.id))
+    .attr("x2", photo => photoX.get(photo.id))
+    .attr("y1", layout.photoY + layout.thumbnail / 2)
+    .attr("y2", photo => d3.max(photo.people, yForPerson));
+
+  const nodeData = photoData.flatMap(photo => photo.people.map(person => ({ photo, person })));
+  marks.nodes = connectionLayer.selectAll("circle")
+    .data(nodeData)
+    .join("circle")
+    .attr("class", "photo-node")
+    .attr("data-photo-id", item => item.photo.id)
+    .attr("data-person", item => item.person)
+    .attr("data-people", item => item.photo.people.map(person => personKey.get(person)).join(" "))
+    .attr("cx", item => photoX.get(item.photo.id))
+    .attr("cy", item => yForPerson(item.person))
+    .attr("r", layout.node / 2);
+
+  const thumbnails = svg.append("g").attr("class", "thumbnails")
+    .selectAll("image")
+    .data(photoData)
+    .join("image")
+    .attr("class", "photo-thumbnail")
+    .attr("data-photo-id", photo => photo.id)
+    .attr("data-people", photo => photo.people.map(person => personKey.get(person)).join(" "))
+    .attr("href", photo => `images/${photo.id}.jpg`)
+    .attr("x", photo => photoX.get(photo.id) - layout.thumbnail / 2)
+    .attr("y", layout.photoY - layout.thumbnail / 2)
+    .attr("width", layout.thumbnail)
+    .attr("height", layout.thumbnail)
+    .attr("preserveAspectRatio", "xMidYMid slice");
+  bindPhotoInteraction(thumbnails);
+  marks.thumbnails = thumbnails;
+
+  const pixelRatio = window.devicePixelRatio || 1;
+  const highlightCanvas = visualization.selectAll("canvas.highlight-canvas")
+    .data([null])
+    .join("canvas")
+    .attr("class", "highlight-canvas")
+    .attr("aria-hidden", "true")
+    .attr("width", width * pixelRatio)
+    .attr("height", height * pixelRatio)
+    .style("width", `${width}px`)
+    .style("height", `${height}px`);
+  const highlightContext = highlightCanvas.node().getContext("2d");
+  highlightContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+
+  marks.updatePersonHighlight = person => {
+    highlightContext.clearRect(0, 0, width, height);
+    if (!person) return;
+
+    const styles = getComputedStyle(document.documentElement);
+    const accent = styles.getPropertyValue("--accent").trim();
+    const paper = styles.getPropertyValue("--paper").trim();
+    const line = styles.getPropertyValue("--line").trim();
+    const relevantPhotos = photoData.filter(photo => photo.people.includes(person));
+    const years = relevantPhotos.map(photo => photo.year);
+    const personY = yForPerson(person);
+
+    highlightContext.strokeStyle = line;
+    highlightContext.lineWidth = 1;
+    highlightContext.beginPath();
+    highlightContext.moveTo(layout.left, personY);
+    highlightContext.lineTo(graphRight, personY);
+    highlightContext.stroke();
+
+    highlightContext.save();
+    highlightContext.globalAlpha = 0.58;
+    highlightContext.strokeStyle = accent;
+    highlightContext.lineWidth = 1.5;
+    relevantPhotos.forEach(photo => {
+      const x = photoX.get(photo.id);
+      highlightContext.beginPath();
+      highlightContext.moveTo(x, layout.photoY + layout.thumbnail / 2);
+      highlightContext.lineTo(x, d3.max(photo.people, yForPerson));
+      highlightContext.stroke();
+    });
+    highlightContext.restore();
+
+    highlightContext.strokeStyle = accent;
+    highlightContext.lineWidth = 6;
+    highlightContext.lineCap = "round";
+    highlightContext.beginPath();
+    highlightContext.moveTo(xScale(d3.min(years)), personY);
+    highlightContext.lineTo(Math.max(xScale(d3.min(years)) + 5, xScale(d3.max(years))), personY);
+    highlightContext.stroke();
+    highlightContext.lineCap = "butt";
+
+    relevantPhotos.forEach(photo => {
+      const x = photoX.get(photo.id);
+      photo.people.forEach(nodePerson => {
+        highlightContext.beginPath();
+        highlightContext.arc(x, yForPerson(nodePerson), layout.node / 2, 0, Math.PI * 2);
+        highlightContext.fillStyle = accent;
+        highlightContext.fill();
+        highlightContext.strokeStyle = paper;
+        highlightContext.lineWidth = 1.5;
+        highlightContext.stroke();
+      });
+
+      highlightContext.strokeStyle = accent;
+      highlightContext.lineWidth = 2;
+      highlightContext.strokeRect(
+        x - layout.thumbnail / 2 - 2,
+        layout.photoY - layout.thumbnail / 2 - 2,
+        layout.thumbnail + 4,
+        layout.thumbnail + 4
+      );
+    });
+  };
+
+  const photosByPerson = new Map(people.map(person => [
+    person,
+    photoData
+      .filter(photo => photo.people.includes(person))
+      .map(photo => ({ photo, x: photoX.get(photo.id) }))
+      .sort((a, b) => a.x - b.x)
+  ]));
+
+  const nearestPhoto = (event, person) => {
+    const pointerX = d3.pointer(event, svg.node())[0];
+    const candidates = photosByPerson.get(person).filter(item => isPhotoRelevant(item.photo));
+    const nearest = d3.least(candidates, item => Math.abs(item.x - pointerX));
+    return nearest && Math.abs(nearest.x - pointerX) <= 13 ? nearest.photo : null;
+  };
+
+  marks.rowHits = svg.append("g").attr("class", "row-hits")
+    .selectAll("rect")
+    .data(people)
+    .join("rect")
+    .attr("x", layout.left)
+    .attr("y", person => yForPerson(person) - layout.row / 2)
+    .attr("width", graphRight - layout.left)
+    .attr("height", layout.row)
+    .on("pointermove", (event, person) => {
+      const photo = nearestPhoto(event, person);
+      event.currentTarget.classList.toggle("has-photo", Boolean(photo));
+      if (photo) showPreview(event, photo);
+      else hidePreview();
+    })
+    .on("pointerleave", event => {
+      event.currentTarget.classList.remove("has-photo");
+      hidePreview();
+    })
+    .on("click", (event, person) => {
+      const photo = nearestPhoto(event, person);
+      if (photo) selectPhoto(photo);
+    });
+
+  const bottomAxis = d3.axisBottom(xScale)
+    .tickValues(getYearTicks())
+    .tickFormat(d3.format("d"))
+    .tickSize(8);
+  svg.append("g")
+    .attr("class", "timeline-axis")
+    .attr("transform", `translate(0,${timelineY})`)
+    .call(bottomAxis);
+  svg.append("text")
+    .attr("class", "axis-title")
+    .attr("x", (layout.left + graphRight) / 2)
+    .attr("y", timelineY + 65)
+    .attr("text-anchor", "middle")
+    .text("Time");
+
+  updateFilterMarks();
+  updatePhotoSelection(null, selectedPhoto);
+}
+
+window.addEventListener("resize", () => {
+  cancelAnimationFrame(resizeFrame);
+  resizeFrame = requestAnimationFrame(render);
+});
+
+initializePanels();
+render();

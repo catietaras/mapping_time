@@ -26,46 +26,38 @@ body {
 
 button { font: inherit; }
 
-canvas {
+.archive-chart,
+#year-ruler svg {
   display: block;
-  margin: 0;
 }
 
 #timeline-shell { position: relative; }
+
+#visualization { position: relative; }
+
+.highlight-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  pointer-events: none;
+}
 
 #year-ruler {
   position: sticky;
   top: 0;
   z-index: 6;
   height: 48px;
-  background: rgba(243, 239, 230, 0.95);
+  background: var(--paper);
   border-bottom: 1px solid var(--line);
-  backdrop-filter: blur(10px);
 }
 
-.year-ruler-track {
-  position: absolute;
-  bottom: 10px;
-  border-bottom: 1px solid var(--line-strong);
-}
+.ruler-axis .domain,
+.ruler-axis .tick line { stroke: var(--line-strong); }
 
-.year-ruler-tick {
-  position: absolute;
-  bottom: 14px;
-  color: var(--muted-ink);
+.ruler-axis .tick text {
+  fill: var(--muted-ink);
   font-size: 11px;
-  line-height: 1;
-  transform: translateX(-50%);
-}
-
-.year-ruler-tick::after {
-  position: absolute;
-  top: 15px;
-  left: 50%;
-  width: 1px;
-  height: 7px;
-  background: var(--line-strong);
-  content: "";
 }
 
 #person-labels {
@@ -141,8 +133,12 @@ button.person-label.is-selected {
   font-size: 13px;
 }
 
-#filter-status[hidden],
-#photo-detail[hidden] { display: none; }
+#filter-status[hidden] { display: none; }
+
+#photo-detail[hidden] {
+  visibility: hidden;
+  pointer-events: none;
+}
 
 #filter-status button {
   padding: 3px 8px;
@@ -172,6 +168,163 @@ button.person-label.is-selected {
   box-shadow: 0 18px 45px rgba(50, 42, 30, 0.18);
 }
 
+#photo-preview {
+  position: fixed;
+  z-index: 12;
+  box-sizing: border-box;
+  width: min(300px, calc(100vw - 24px));
+  padding: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 16px 40px rgba(50, 42, 30, 0.18);
+  pointer-events: none;
+}
+
+#photo-preview[hidden] { display: none; }
+
+#photo-preview img {
+  display: block;
+  width: 100%;
+  min-height: 140px;
+  max-height: 240px;
+  object-fit: contain;
+  background: var(--paper-deep);
+}
+
+#photo-preview p { margin: 0; text-align: center; }
+
+.photo-preview-year {
+  padding-top: 10px;
+  color: var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 18px;
+}
+
+.photo-preview-id,
+.photo-preview-people {
+  padding-top: 5px;
+  color: var(--muted-ink);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.archive-chart { background: var(--paper); }
+
+.chart-kicker {
+  fill: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.chart-heading {
+  fill: var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 38px;
+}
+
+.chart-deck {
+  fill: var(--muted-ink);
+  font-size: 14px;
+}
+
+.chart-instructions {
+  fill: var(--muted-ink);
+  font-size: 12px;
+}
+
+.time-grid line,
+.guide-lines line {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.time-grid line { opacity: 0.65; }
+.guide-lines line { opacity: 0.75; }
+.guide-lines line.is-muted { opacity: 0.28; }
+
+.activity-bands line {
+  stroke: var(--line-strong);
+  stroke-linecap: round;
+  stroke-width: 3;
+  opacity: 0.62;
+}
+
+.activity-bands line.is-muted { opacity: 0.24; }
+
+.activity-bands line.is-selected {
+  stroke: var(--accent);
+  stroke-width: 6;
+  opacity: 1;
+}
+
+.photo-connection {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  opacity: 0.68;
+}
+
+.photo-node {
+  fill: var(--paper);
+  stroke: #554f46;
+  stroke-width: 1.25;
+}
+
+.photo-connection.is-muted,
+.photo-node.is-muted,
+.photo-thumbnail.is-muted { opacity: 0.16; }
+
+.photo-thumbnail.is-muted { pointer-events: none; }
+
+.photo-connection.is-selected {
+  stroke: var(--accent);
+  stroke-width: 2;
+  opacity: 1;
+}
+
+.photo-node.is-selected {
+  fill: var(--accent);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  opacity: 1;
+}
+
+.photo-thumbnail {
+  outline: 1px solid var(--panel);
+  outline-offset: 0;
+  cursor: pointer;
+}
+
+.photo-thumbnail.is-selected {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+  opacity: 1;
+}
+
+.photo-thumbnail:focus-visible { outline: 3px solid var(--accent); }
+
+.row-hits rect {
+  fill: transparent;
+}
+
+.row-hits rect.has-photo {
+  cursor: pointer;
+}
+
+.timeline-axis .domain,
+.timeline-axis .tick line { stroke: var(--ink); }
+
+.timeline-axis .tick text {
+  fill: var(--ink);
+  font-size: 11px;
+}
+
+.axis-title {
+  fill: var(--ink);
+  font-size: 14px;
+}
+
 .photo-detail-close {
   position: absolute;
   top: 8px;
@@ -192,6 +345,7 @@ button.person-label.is-selected {
 .photo-detail-image {
   display: block;
   width: 100%;
+  min-height: 180px;
   max-height: 380px;
   object-fit: contain;
   background: var(--paper-deep);
